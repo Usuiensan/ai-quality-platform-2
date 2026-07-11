@@ -7,19 +7,10 @@ from .models import Finding, ReviewResult
 from .providers.base import Provider
 
 
-def review_diff(diff_text: str, provider: Provider | None = None) -> ReviewResult:
+def run_ai_review(provider: Provider | None, system_prompt: str, user_prompt: str, reviewer_name: str) -> ReviewResult:
     if provider is None:
-        return ReviewResult(reviewer="code", verdict="ERROR", summary="プロバイダが設定されていません。")
+        return ReviewResult(reviewer=reviewer_name, verdict="ERROR", summary="プロバイダが設定されていません。")
 
-    system_prompt = ""
-    code_prompt_path = Path("prompts/code.md")
-    if code_prompt_path.exists():
-        system_prompt = code_prompt_path.read_text(encoding="utf-8")
-    
-    system_prompt += "\n\nあなたはコードレビューアです。以下の差分を確認し、ロジック不備、エラーハンドリング、セキュリティリスク、可読性などを指摘してください。必ず指定されたJSONフォーマットで回答してください。"
-    
-    user_prompt = f"以下のGit差分をレビューしてください:\n\n```diff\n{diff_text}\n```"
-    
     schema = {
         "type": "object",
         "properties": {
@@ -54,8 +45,6 @@ def review_diff(diff_text: str, provider: Provider | None = None) -> ReviewResul
     
     try:
         response = provider.generate_review(system_prompt=system_prompt, user_prompt=user_prompt, schema=schema)
-        # 応答のJSONをパース
-        # Markdownのコードブロック ```json ... ``` で囲まれている場合を考慮
         content = response.content.strip()
         if content.startswith("```json"):
             content = content[7:]
@@ -83,7 +72,7 @@ def review_diff(diff_text: str, provider: Provider | None = None) -> ReviewResul
             ))
         
         return ReviewResult(
-            reviewer="code",
+            reviewer=data.get("reviewer", reviewer_name),
             verdict=data.get("verdict", "ERROR"),
             summary=data.get("summary", "エラー"),
             findings=findings,
@@ -94,10 +83,23 @@ def review_diff(diff_text: str, provider: Provider | None = None) -> ReviewResul
         )
     except Exception as e:
         return ReviewResult(
-            reviewer="code",
+            reviewer=reviewer_name,
             verdict="ERROR",
             summary=f"LLMプロバイダ呼び出しエラー: {e}"
         )
+
+
+def review_diff(diff_text: str, provider: Provider | None = None) -> ReviewResult:
+    system_prompt = ""
+    code_prompt_path = Path("prompts/code.md")
+    if code_prompt_path.exists():
+        system_prompt = code_prompt_path.read_text(encoding="utf-8")
+    
+    system_prompt += "\n\nあなたはコードレビューアです。以下の差分を確認し、ロジック不備、エラーハンドリング、セキュリティリスク、可読性などを指摘してください。必ず指定されたJSONフォーマットで回答してください。"
+    
+    user_prompt = f"以下のGit差分をレビューしてください:\n\n```diff\n{diff_text}\n```"
+    
+    return run_ai_review(provider, system_prompt, user_prompt, "code")
 
 
 def render_report(result: ReviewResult) -> str:

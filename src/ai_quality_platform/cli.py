@@ -32,10 +32,10 @@ def main(argv: list[str] | None = None) -> int:
 
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
     code_review = review_diff(diff_text, provider)
-    requirements_review = review_requirements(diff_text)
-    tests_review = review_tests(diff_text)
-    docs_review = review_documentation(diff_text)
-    audit = final_audit([code_review, requirements_review, tests_review, docs_review], diff_text)
+    requirements_review = review_requirements(diff_text, provider=provider)
+    tests_review = review_tests(diff_text, provider=provider)
+    docs_review = review_documentation(diff_text, provider=provider)
+    audit = final_audit([code_review, requirements_review, tests_review, docs_review], diff_text, provider=provider)
     for result in [code_review, requirements_review, tests_review, docs_review, audit]:
         payload = to_json_ready(result)
         validate_review_result(payload)
