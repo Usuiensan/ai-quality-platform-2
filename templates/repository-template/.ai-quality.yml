@@ -1,0 +1,43 @@
+version: 1
+
+preset: generic
+risk_level: medium
+
+reviewers:
+  architecture: false
+  requirements: true
+  code: true
+  security: true
+  tests: true
+  documentation: true
+  final_audit: true
+
+autofix:
+  enabled: true
+  max_rounds: 3
+  max_changed_lines_per_round: 300
+  max_total_changed_lines: 800
+  allow_dependency_changes: false
+  allow_workflow_changes: false
+
+human_gate:
+  dependency_changes: true
+  workflow_changes: true
+  authentication_changes: true
+  authorization_changes: true
+  deployment_changes: true
+  secret_handling_changes: true
+  destructive_operations: true
+
+localization:
+  human_language: ja
+  commit_language: ja
+  pull_request_language: ja
+  review_language: ja
+  documentation_language: ja
+  machine_identifiers: en
+
+platform:
+  repository: Usuiensan/ai-quality-platform
+  workflow_ref: v1
+

@@ -1,0 +1,27 @@
+name: AI Quality Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: ai-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: AI品質ゲート
+    uses: Usuiensan/ai-quality-platform/.github/workflows/reusable-quality-gate.yml@v1
+    secrets: inherit
+
