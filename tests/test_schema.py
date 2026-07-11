@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ai_quality_platform.schema import validate_review_result
 from ai_quality_platform.schema import parse_review_result
+from ai_quality_platform.schema import validate_against_schema
 
 
 class SchemaTests(unittest.TestCase):
@@ -32,6 +33,19 @@ class SchemaTests(unittest.TestCase):
     def test_rejects_empty_json(self) -> None:
         with self.assertRaises(ValueError):
             parse_review_result(" ")
+
+    def test_validates_against_schema(self) -> None:
+        validate_against_schema(
+            {
+                "reviewer": "code",
+                "verdict": "PASS",
+                "summary": "ok",
+                "findings": [],
+                "tested": [],
+                "not_tested": [],
+            },
+            Path("schemas/review-result.schema.json"),
+        )
 
 
 if __name__ == "__main__":

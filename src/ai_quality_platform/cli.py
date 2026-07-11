@@ -5,7 +5,9 @@ from pathlib import Path
 
 from .config import load_ai_quality_config
 from .diff import read_diff
-from .review import render_report, review_diff
+from .review import review_diff
+from .reviewers import final_audit, review_documentation, review_requirements, review_tests, to_json_ready
+from .schema import validate_against_schema, validate_review_result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,11 +19,38 @@ def main(argv: list[str] | None = None) -> int:
     config = load_ai_quality_config(Path(args.config))
     _ = config
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
-    result = review_diff(diff_text)
-    print(render_report(result))
-    return 0 if result.verdict in {"PASS", "WARN"} else 1
+    code_review = review_diff(diff_text)
+    requirements_review = review_requirements(diff_text)
+    tests_review = review_tests(diff_text)
+    docs_review = review_documentation(diff_text)
+    audit = final_audit([code_review, requirements_review, tests_review, docs_review], diff_text)
+    for result in [code_review, requirements_review, tests_review, docs_review, audit]:
+        payload = to_json_ready(result)
+        validate_review_result(payload)
+        validate_against_schema(payload, Path("schemas/review-result.schema.json"))
+    print(_render_full_report([code_review, requirements_review, tests_review, docs_review], audit))
+    return 0 if audit.verdict in {"PASS", "WARN"} else 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
 
+
+def _render_full_report(reviews, audit) -> str:
+    lines = [
+        "<!-- ai-quality-platform-report -->",
+        "# AI品質管理レポート",
+        "",
+        "## 総合判定",
+        "",
+        f"**{audit.verdict}**",
+        "",
+        "## AIレビュー",
+        "",
+        "| 担当 | 判定 | 指摘数 |",
+        "|---|---:|---:|",
+    ]
+    for review in reviews + [audit]:
+        lines.append(f"| {review.reviewer} | {review.verdict} | {len(review.findings)} |")
+    lines.extend(["", "## 変更概要", "", audit.summary])
+    return "\n".join(lines)

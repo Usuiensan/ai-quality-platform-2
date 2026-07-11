@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ai_quality_platform.review import review_diff, render_report
+from ai_quality_platform.reviewers import final_audit, review_documentation, review_requirements, review_tests
 
 
 class ReviewTests(unittest.TestCase):
@@ -27,6 +28,23 @@ class ReviewTests(unittest.TestCase):
         diff = Path("fixtures/dependency-change/diff.txt").read_text(encoding="utf-8")
         result = review_diff(diff)
         self.assertIn(result.verdict, {"WARN", "BLOCK"})
+
+    def test_requirements_reviewer_detects_breaking_change(self) -> None:
+        result = review_requirements("", issue_text="破壊的変更が含まれます")
+        self.assertEqual(result.verdict, "BLOCK")
+
+    def test_tests_reviewer_detects_bad_test_change(self) -> None:
+        result = review_tests("assert false")
+        self.assertEqual(result.verdict, "BLOCK")
+
+    def test_documentation_reviewer_warns_on_missing_docs(self) -> None:
+        result = review_documentation("feature change")
+        self.assertEqual(result.verdict, "WARN")
+
+    def test_final_audit_blocks_when_previous_review_blocked(self) -> None:
+        blocked = review_requirements("", issue_text="破壊的変更")
+        result = final_audit([blocked], "workflow change")
+        self.assertEqual(result.verdict, "BLOCK")
 
 
 if __name__ == "__main__":
