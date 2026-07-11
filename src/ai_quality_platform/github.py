@@ -54,13 +54,13 @@ def post_pr_comment(body: str) -> bool:
 def git_commit_and_push(message: str) -> bool:
     try:
         # Check if there are changes
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, encoding="utf-8")
         if not status.stdout.strip():
             print("No changes to commit.")
             return True
             
         # Configure git if not configured
-        user_name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True).stdout.strip()
+        user_name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, encoding="utf-8").stdout.strip()
         if not user_name:
             subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
             subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)

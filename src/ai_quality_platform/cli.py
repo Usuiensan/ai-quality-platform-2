@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         import subprocess
         def current_review_fn(root_path: Path):
             # ワーキングツリーの最新のdiffを取得して再レビュー
-            proc = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True, cwd=root_path)
+            proc = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True, encoding="utf-8", cwd=root_path)
             new_diff = proc.stdout
             return [
                 review_diff(new_diff, provider),
@@ -90,8 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if audit.verdict in {"PASS", "WARN"} else 1
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+
 
 
 def _render_full_report(reviews, audit) -> str:
@@ -132,3 +131,6 @@ def _render_autofix_block(outcome) -> str:
             f"- 理由: {outcome.reason}",
         ]
     )
+
+if __name__ == "__main__":
+    raise SystemExit(main())

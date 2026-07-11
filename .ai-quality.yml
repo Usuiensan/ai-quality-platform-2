@@ -16,3 +16,6 @@ localization:
   documentation_language: ja
   machine_identifiers: en
 
+ai:
+  provider: ollama
+  model: qwen3:4b-instruct

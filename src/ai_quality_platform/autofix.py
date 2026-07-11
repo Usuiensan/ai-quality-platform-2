@@ -120,13 +120,14 @@ def _apply_single_fix(root: Path, finding, provider: Provider | None = None) -> 
     
     import json
     try:
+        content = response.content
         # Markdownコードブロックで囲まれている場合を考慮
-        if "```json" in response:
-            response = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            response = response.split("```")[1].split("```")[0]
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0]
             
-        data = json.loads(response.strip())
+        data = json.loads(content.strip())
         if data.get("status") == "fixed":
             search = data.get("search", "")
             replace = data.get("replace", "")
