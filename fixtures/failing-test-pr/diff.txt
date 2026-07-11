@@ -1,0 +1,7 @@
+diff --git a/tests/test_app.py b/tests/test_app.py
+--- a/tests/test_app.py
++++ b/tests/test_app.py
+@@ -1 +1 @@
+-assert True
++assert False
+

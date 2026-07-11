@@ -1,0 +1,13 @@
+name: 最終監査
+
+on:
+  workflow_call:
+    secrets: {}
+
+jobs:
+  audit:
+    name: 最終監査
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Phase 1 の最終監査は未実装です"
+

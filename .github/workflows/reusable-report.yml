@@ -1,0 +1,13 @@
+name: レポート更新
+
+on:
+  workflow_call:
+    secrets: {}
+
+jobs:
+  report:
+    name: レポート更新
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Phase 1 のレポート更新は未実装です"
+

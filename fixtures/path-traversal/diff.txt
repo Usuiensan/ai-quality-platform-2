@@ -1,0 +1,7 @@
+diff --git a/scripts/copy.ps1 b/scripts/copy.ps1
+--- a/scripts/copy.ps1
++++ b/scripts/copy.ps1
+@@ -1 +1 @@
+-Copy-Item .\src\file.txt .\out\file.txt
++Copy-Item ..\secret.txt C:\temp\secret.txt
+

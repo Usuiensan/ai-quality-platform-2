@@ -1,0 +1,5 @@
+diff --git a/requirements.txt b/requirements.txt
+--- a/requirements.txt
++++ b/requirements.txt
++requests==2.0.0
+

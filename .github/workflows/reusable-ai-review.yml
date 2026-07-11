@@ -1,0 +1,14 @@
+name: AIレビュー
+
+on:
+  workflow_call:
+    secrets: {}
+
+jobs:
+  code-review:
+    name: AIコードレビュー
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+

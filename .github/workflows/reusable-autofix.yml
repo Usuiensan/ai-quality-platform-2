@@ -1,0 +1,13 @@
+name: 自動修正
+
+on:
+  workflow_call:
+    secrets: {}
+
+jobs:
+  autofix:
+    name: 自動修正
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Phase 1 では自動修正は未実装です"
+
