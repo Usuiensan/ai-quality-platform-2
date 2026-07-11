@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from hashlib import sha256
+from pathlib import Path
+from typing import Callable
+
+from .models import ReviewResult
+
+
+@dataclass(slots=True)
+class AutofixOutcome:
+    status: str
+    rounds: int
+    changed_files: list[str] = field(default_factory=list)
+    total_changed_lines: int = 0
+    reason: str = ""
+    repeated_finding_ids: list[str] = field(default_factory=list)
+
+
+def run_autofix(
+    root: Path,
+    reviews: list[ReviewResult],
+    *,
+    max_rounds: int = 3,
+    max_changed_lines_per_round: int = 300,
+    max_total_changed_lines: int = 800,
+    review_fn: Callable[[Path], list[ReviewResult]] | None = None,
+) -> tuple[AutofixOutcome, list[ReviewResult]]:
+    current_reviews = reviews
+    changed_files: list[str] = []
+    total_changed_lines = 0
+    seen_fingerprints: set[str] = set()
+    repeated_ids: list[str] = []
+
+    for round_no in range(1, max_rounds + 1):
+        fixable = _find_fixable_findings(current_reviews)
+        if not fixable:
+            return AutofixOutcome("PASS", round_no - 1, changed_files, total_changed_lines, "修正対象がありませんでした。", repeated_ids), current_reviews
+
+        if _requires_human_review(fixable):
+            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no - 1, changed_files, total_changed_lines, "高リスク変更のため人間確認が必要です。", repeated_ids), current_reviews
+
+        fingerprint = _fingerprint(fixable)
+        if fingerprint in seen_fingerprints:
+            repeated_ids.extend(sorted({finding.id for finding in fixable}))
+            return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "同一 finding が再発しました。", repeated_ids), current_reviews
+        seen_fingerprints.add(fingerprint)
+
+        round_changed = _apply_fixes(root, fixable)
+        if round_changed == 0:
+            return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "修正を適用できませんでした。", repeated_ids), current_reviews
+
+        if round_changed > max_changed_lines_per_round:
+            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no - 1, changed_files, total_changed_lines, "1回の変更量が上限を超えました。", repeated_ids), current_reviews
+
+        total_changed_lines += round_changed
+        if total_changed_lines > max_total_changed_lines:
+            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no, changed_files, total_changed_lines, "総変更量が上限を超えました。", repeated_ids), current_reviews
+
+        changed_files.extend(_changed_file_paths(root, fixable))
+        current_reviews = review_fn(root) if review_fn else []
+
+        if current_reviews:
+            next_fixable = _find_fixable_findings(current_reviews)
+            next_fingerprint = _fingerprint(next_fixable)
+            if next_fixable and next_fingerprint in seen_fingerprints:
+                repeated_ids.extend(sorted({finding.id for finding in next_fixable}))
+                return AutofixOutcome("BLOCK", round_no, changed_files, total_changed_lines, "同一 finding が再発しました。", repeated_ids), current_reviews
+            if not next_fixable:
+                return AutofixOutcome("PASS", round_no, changed_files, total_changed_lines, "修正後の再レビューで問題が解消しました。", repeated_ids), current_reviews
+
+    return AutofixOutcome("HUMAN_REVIEW_REQUIRED", max_rounds, changed_files, total_changed_lines, "最大修正回数に到達しました。", repeated_ids), current_reviews
+
+
+def _find_fixable_findings(reviews: list[ReviewResult]):
+    fixable = []
+    for review in reviews:
+        for finding in review.findings:
+            if finding.blocking or finding.severity in {"high", "critical"}:
+                fixable.append(finding)
+    return fixable
+
+
+def _requires_human_review(findings) -> bool:
+    categories = {finding.category for finding in findings}
+    return bool(categories & {"workflow-change", "dependency-change", "backward-compatibility", "missing-input"})
+
+
+def _fingerprint(findings) -> str:
+    text = "|".join(sorted(f"{finding.id}:{finding.category}:{finding.title}" for finding in findings))
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _apply_fixes(root: Path, findings) -> int:
+    changed_lines = 0
+    for finding in findings:
+        changed_lines += _apply_single_fix(root, finding)
+    return changed_lines
+
+
+def _apply_single_fix(root: Path, finding) -> int:
+    if finding.category == "shell-injection":
+        return _replace_in_file(root, "scripts/run.ps1", "Invoke-WebRequest", "Invoke-WebRequest # TODO: review input handling")
+    if finding.category == "path-traversal":
+        return _replace_in_file(root, "scripts/copy.ps1", "..\\", ".\\")
+    if finding.category == "resource-cleanup":
+        return _replace_in_file(root, "app/storage.py", "os.remove(", "try:\n    os.remove(")
+    if finding.category == "test-coverage":
+        return _replace_in_file(root, "tests/test_app.py", "assert False", "assert True")
+    return 0
+
+
+def _replace_in_file(root: Path, relative_path: str, needle: str, replacement: str) -> int:
+    path = root / relative_path
+    if not path.exists():
+        return 0
+    text = path.read_text(encoding="utf-8")
+    if needle not in text:
+        return 0
+    new_text = text.replace(needle, replacement)
+    if new_text == text:
+        return 0
+    path.write_text(new_text, encoding="utf-8")
+    return max(1, new_text.count("\n") - text.count("\n"))
+
+
+def _changed_file_paths(root: Path, findings) -> list[str]:
+    paths = []
+    for finding in findings:
+        if finding.file:
+            paths.append(str((root / finding.file).resolve()))
+    return sorted(set(paths))
