@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+from typing import Any
+
 @dataclass(slots=True)
 class AiQualityConfig:
     version: int = 1
@@ -11,6 +13,8 @@ class AiQualityConfig:
     risk_level: str = "medium"
     reviewers: dict[str, bool] = field(default_factory=dict)
     localization: dict[str, str] = field(default_factory=dict)
+    ai: dict[str, Any] = field(default_factory=dict)
+    budget: dict[str, Any] = field(default_factory=dict)
 
 
 def load_ai_quality_config(path: Path) -> AiQualityConfig:
@@ -23,6 +27,8 @@ def load_ai_quality_config(path: Path) -> AiQualityConfig:
         risk_level=str(data.get("risk_level", "medium")),
         reviewers=dict(data.get("reviewers", {})),
         localization=dict(data.get("localization", {})),
+        ai=dict(data.get("ai", {})),
+        budget=dict(data.get("budget", {})),
     )
 
 
