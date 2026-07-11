@@ -23,7 +23,7 @@ class OllamaProvider(Provider):
         }
 
         if schema:
-            payload["format"] = "json"
+            payload["format"] = schema
 
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         try:

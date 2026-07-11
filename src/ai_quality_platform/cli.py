@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
         provider = None
 
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
-    code_review = review_diff(diff_text)
+    code_review = review_diff(diff_text, provider)
     requirements_review = review_requirements(diff_text)
     tests_review = review_tests(diff_text)
     docs_review = review_documentation(diff_text)
