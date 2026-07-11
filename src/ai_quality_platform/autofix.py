@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .models import ReviewResult
+from .providers.base import Provider
 
 
 @dataclass(slots=True)
@@ -26,6 +27,7 @@ def run_autofix(
     max_changed_lines_per_round: int = 300,
     max_total_changed_lines: int = 800,
     review_fn: Callable[[Path], list[ReviewResult]] | None = None,
+    provider: Provider | None = None,
 ) -> tuple[AutofixOutcome, list[ReviewResult]]:
     current_reviews = reviews
     changed_files: list[str] = []
@@ -47,7 +49,7 @@ def run_autofix(
             return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "同一 finding が再発しました。", repeated_ids), current_reviews
         seen_fingerprints.add(fingerprint)
 
-        round_changed = _apply_fixes(root, fixable)
+        round_changed = _apply_fixes(root, fixable, provider)
         if round_changed == 0:
             return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "修正を適用できませんでした。", repeated_ids), current_reviews
 
@@ -92,22 +94,49 @@ def _fingerprint(findings) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
 
 
-def _apply_fixes(root: Path, findings) -> int:
+def _apply_fixes(root: Path, findings, provider: Provider | None = None) -> int:
     changed_lines = 0
     for finding in findings:
-        changed_lines += _apply_single_fix(root, finding)
+        changed_lines += _apply_single_fix(root, finding, provider)
     return changed_lines
 
 
-def _apply_single_fix(root: Path, finding) -> int:
-    if finding.category == "shell-injection":
-        return _replace_in_file(root, "scripts/run.ps1", "Invoke-WebRequest", "Invoke-WebRequest # TODO: review input handling")
-    if finding.category == "path-traversal":
-        return _replace_in_file(root, "scripts/copy.ps1", "..\\", ".\\")
-    if finding.category == "resource-cleanup":
-        return _replace_in_file(root, "app/storage.py", "os.remove(", "try:\n    os.remove(")
-    if finding.category == "test-coverage":
-        return _replace_in_file(root, "tests/test_app.py", "assert False", "assert True")
+def _apply_single_fix(root: Path, finding, provider: Provider | None = None) -> int:
+    if provider is None or not finding.file:
+        return 0
+
+    path = root / finding.file
+    if not path.exists():
+        return 0
+        
+    text = path.read_text(encoding="utf-8")
+    
+    prompt_path = Path("prompts/autofix.md")
+    system_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "You are an autofix bot."
+    
+    user_prompt = f"以下のファイルの内容と、指摘内容をもとにコードを修正してください。\n\n【対象ファイル】\n```\n{text}\n```\n\n【指摘内容】\n- ID: {finding.id}\n- タイトル: {finding.title}\n- 詳細: {finding.description}\n- 推奨対応: {finding.recommendation}"
+    
+    response = provider.generate_review(system_prompt, user_prompt)
+    
+    import json
+    try:
+        # Markdownコードブロックで囲まれている場合を考慮
+        if "```json" in response:
+            response = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            response = response.split("```")[1].split("```")[0]
+            
+        data = json.loads(response.strip())
+        if data.get("status") == "fixed":
+            search = data.get("search", "")
+            replace = data.get("replace", "")
+            if search and search in text:
+                new_text = text.replace(search, replace, 1)
+                path.write_text(new_text, encoding="utf-8")
+                return max(1, new_text.count("\n") - text.count("\n"))
+    except Exception as e:
+        print(f"Autofix format error: {e}")
+        
     return 0
 
 
