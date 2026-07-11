@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
+from .providers.base import create_provider
 from .autofix import run_autofix
 from .config import load_ai_quality_config
 from .diff import read_diff
@@ -19,7 +21,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     config = load_ai_quality_config(Path(args.config))
-    _ = config
+    provider_name = config.ai.get("provider", "openai")
+    model = config.ai.get("model", "gpt-4o-mini")
+    api_key = os.environ.get("AI_API_KEY", "")
+    try:
+        provider = create_provider(provider_name, model, api_key)
+    except Exception as e:
+        print(f"Provider initialization warning: {e}")
+        provider = None
+
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
     code_review = review_diff(diff_text)
     requirements_review = review_requirements(diff_text)
@@ -57,6 +67,11 @@ def _render_full_report(reviews, audit) -> str:
     ]
     for review in reviews + [audit]:
         lines.append(f"| {review.reviewer} | {review.verdict} | {len(review.findings)} |")
+    
+    total_cost = sum(r.estimated_cost_jpy for r in reviews + [audit])
+    if total_cost > 0:
+        lines.extend(["", "### API Cost", "", f"Total estimated cost: ¥{total_cost:.2f}"])
+        
     lines.extend(["", "## 変更概要", "", audit.summary])
     return "\n".join(lines)
 

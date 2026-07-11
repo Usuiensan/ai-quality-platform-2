@@ -26,4 +26,6 @@ class ReviewResult:
     findings: list[Finding] = field(default_factory=list)
     tested: list[str] = field(default_factory=list)
     not_tested: list[str] = field(default_factory=list)
+    usage_tokens: int = 0
+    estimated_cost_jpy: float = 0.0
 
