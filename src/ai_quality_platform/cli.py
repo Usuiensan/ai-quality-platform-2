@@ -48,14 +48,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[Urgent Mode] Models: {models_config}")
         print(f"[Urgent Mode] Estimated Cost: JPY {cost:.2f}")
         
-        threshold = float(config.budget.get("auto_approve_threshold", 0.0))
-        if not args.yes and cost > threshold:
-            reply = input(f"Approve estimated cost of JPY {cost:.2f}? [y/N]: ")
-            if reply.lower() not in ["y", "yes"]:
-                print("Aborted by user.")
-                return 1
+        if cost < 1.0:
+            print(f"Cost is under 1 JPY ({cost:.2f} JPY). Auto-approving.")
+        elif cost <= 100.0:
+            if not args.yes:
+                reply = input(f"Approve estimated cost of JPY {cost:.2f}? Type 'ok' to proceed: ")
+                if reply.strip().lower() != "ok":
+                    print("Aborted by user.")
+                    return 1
         else:
-            print("Budget auto-approved.")
+            if not args.yes:
+                try:
+                    from num2words import num2words
+                    words = num2words(int(cost)).replace(" ", "-").replace(",", "")
+                    expected_str = f"{words}-JPY"
+                except ImportError:
+                    expected_str = f"{int(cost)}-JPY"
+                
+                print(f"High cost warning! Estimated cost is JPY {cost:.2f}.")
+                reply = input(f"To approve, please type exactly '{expected_str}': ")
+                if reply.strip().lower() != expected_str.lower():
+                    print("Aborted by user. Input did not match.")
+                    return 1
     else:
         # Load Role-based models
         models_config = config.ai.get("models", {})
