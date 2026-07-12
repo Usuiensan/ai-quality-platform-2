@@ -6,7 +6,7 @@
 
 ## 1. プラットフォームの概要と特徴
 
-本プラットフォームは、GitHubのプルリクエスト（PR）に対して、AIが自動でコードレビューを行い、発見された脆弱性やバグを**自律的に自動修正（Autofix）**し、最終的な監査レポートをPRへ投稿するシステムです。
+本プラットフォームは、GitHubのプルリクエスト（PR）に対して、AIが自動でコードレビューを行い、最終的な監査レポートをPRへ投稿するシステムです。開発者はレポートの内容を確認し、手元のローカル環境で自動修正（Autofix）コマンドを実行して自己修正した上でコードをプッシュする安全なワークフローを提供します。
 
 ### 動作モード
 本システムは用途に合わせて2つの実行モードをシームレスに切り替えて運用できます。
@@ -143,6 +143,6 @@ Windows のセルフホストランナー環境では、標準の `actions/setup
              # 必要に応じて環境変数経由でローカルLLMのエンドポイントを指定
              # AI_BASE_URL: "http://localhost:11434/v1/chat/completions"
            run: |
-             python -m ai_quality_platform.cli --config .ai-quality.yml --github-pr --autofix-root .
+             python -m ai_quality_platform.cli --config .ai-quality.yml --github-pr
    ```
 

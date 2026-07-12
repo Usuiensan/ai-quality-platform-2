@@ -250,9 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         print(report_text)
         
         if outcome.status == "PASS" and audit.verdict in {"PASS", "WARN"}:
-            print("Autofix changes accepted. Committing and pushing to PR...")
-            from .github import git_commit_and_push
-            git_commit_and_push("auto: apply AI generated fixes")
+            print("Autofix changes applied locally. Please verify the changes.")
             
         if args.github_pr:
             from .github import post_pr_comment

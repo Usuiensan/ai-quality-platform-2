@@ -34,5 +34,5 @@ jobs:
           AI_API_KEY: ${{ secrets.AI_API_KEY || secrets.OPENAI_API_KEY || secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python -m ai_quality_platform.cli --config .ai-quality.yml --github-pr --autofix-root .
+          python -m ai_quality_platform.cli --config .ai-quality.yml --github-pr
 
