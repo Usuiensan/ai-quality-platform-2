@@ -8,7 +8,7 @@ from .providers.base import Provider
 from .review import render_report, run_ai_review
 
 def _base_result(reviewer: str) -> ReviewResult:
-    return ReviewResult(reviewer=reviewer, verdict="PASS", summary="修正が必要な問題は見つかりませんでした。")
+    return ReviewResult(reviewer=reviewer, verdict="PASS", summary="No issues requiring fix were found.")
 
 def unified_review(diff_text: str, provider: Provider | None = None) -> ReviewResult:
     if provider is None:
@@ -19,9 +19,9 @@ def unified_review(diff_text: str, provider: Provider | None = None) -> ReviewRe
     if prompt_path.exists():
         system_prompt = prompt_path.read_text(encoding="utf-8")
         
-    system_prompt += "\n\nあなたは統合レビュアーです。必ず指定されたJSONフォーマットで回答してください。"
+    system_prompt += "\n\nYou are a unified reviewer. You must respond in the specified JSON format."
     
-    user_prompt = f"以下の情報を総合的にレビューしてください:\n\n【Git差分】\n```diff\n{diff_text}\n```"
+    user_prompt = f"Please review the following information comprehensively:\n\n[Git Diff]\n```diff\n{diff_text}\n```"
     
     return run_ai_review(provider, system_prompt, user_prompt, "unified_review")
 
@@ -30,7 +30,7 @@ def unified_review(diff_text: str, provider: Provider | None = None) -> ReviewRe
 
 def final_audit(reviews: list[ReviewResult], diff_text: str, ci_text: str = "", provider: Provider | None = None) -> ReviewResult:
     if provider is None:
-        result = ReviewResult(reviewer="final_audit", verdict="PASS", summary="最終監査でブロック要因は見つかりませんでした。")
+        result = ReviewResult(reviewer="final_audit", verdict="PASS", summary="No blocking factors were found during the final audit.")
         return result
 
     system_prompt = ""
@@ -38,13 +38,13 @@ def final_audit(reviews: list[ReviewResult], diff_text: str, ci_text: str = "", 
     if prompt_path.exists():
         system_prompt = prompt_path.read_text(encoding="utf-8")
         
-    system_prompt += "\n\nあなたは最終的な監査役です。他のAIレビュー結果を含めて総合的に判断し、必ず指定されたJSONフォーマットで回答してください。"
+    system_prompt += "\n\nYou are the final auditor. Make a comprehensive judgment including the other AI review results, and you must respond in the specified JSON format."
     
     import json
     reviews_data = [to_json_ready(r) for r in reviews]
     reviews_json = json.dumps(reviews_data, ensure_ascii=False, indent=2)
     
-    user_prompt = f"以下の情報をレビューしてください:\n\n【各レビュアーの判定結果】\n```json\n{reviews_json}\n```\n\n【Git差分】\n```diff\n{diff_text}\n```\n\n【CI実行結果】\n{ci_text}"
+    user_prompt = f"Please review the following information:\n\n[Review Results]\n```json\n{reviews_json}\n```\n\n[Git Diff]\n```diff\n{diff_text}\n```\n\n[CI Results]\n{ci_text}"
     
     return run_ai_review(provider, system_prompt, user_prompt, "final_audit")
 

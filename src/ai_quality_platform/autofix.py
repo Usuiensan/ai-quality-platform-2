@@ -39,27 +39,27 @@ def run_autofix(
     for round_no in range(1, max_rounds + 1):
         fixable = _find_fixable_findings(current_reviews)
         if not fixable:
-            return AutofixOutcome("PASS", round_no - 1, changed_files, total_changed_lines, "修正対象がありませんでした。", repeated_ids), current_reviews
+            return AutofixOutcome("PASS", round_no - 1, changed_files, total_changed_lines, "No findings to fix.", repeated_ids), current_reviews
 
         if _requires_human_review(fixable):
-            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no - 1, changed_files, total_changed_lines, "高リスク変更のため人間確認が必要です。", repeated_ids), current_reviews
+            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no - 1, changed_files, total_changed_lines, "Human review is required due to high risk changes.", repeated_ids), current_reviews
 
         fingerprint = _fingerprint(fixable)
         if fingerprint in seen_fingerprints:
             repeated_ids.extend(sorted({finding.id for finding in fixable}))
-            return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "同一 finding が再発しました。", repeated_ids), current_reviews
+            return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "The same finding reoccurred.", repeated_ids), current_reviews
         seen_fingerprints.add(fingerprint)
 
         round_changed = _apply_fixes(root, fixable, provider, fallback_provider)
         if round_changed == 0:
-            return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "修正を適用できませんでした。", repeated_ids), current_reviews
+            return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "Failed to apply fixes.", repeated_ids), current_reviews
 
         if round_changed > max_changed_lines_per_round:
-            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no - 1, changed_files, total_changed_lines, "1回の変更量が上限を超えました。", repeated_ids), current_reviews
+            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no - 1, changed_files, total_changed_lines, "Change volume per round exceeded the limit.", repeated_ids), current_reviews
 
         total_changed_lines += round_changed
         if total_changed_lines > max_total_changed_lines:
-            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no, changed_files, total_changed_lines, "総変更量が上限を超えました。", repeated_ids), current_reviews
+            return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no, changed_files, total_changed_lines, "Total change volume exceeded the limit.", repeated_ids), current_reviews
 
         changed_files.extend(_changed_file_paths(root, fixable))
         current_reviews = review_fn(root) if review_fn else []
@@ -69,11 +69,11 @@ def run_autofix(
             next_fingerprint = _fingerprint(next_fixable)
             if next_fixable and next_fingerprint in seen_fingerprints:
                 repeated_ids.extend(sorted({finding.id for finding in next_fixable}))
-                return AutofixOutcome("BLOCK", round_no, changed_files, total_changed_lines, "同一 finding が再発しました。", repeated_ids), current_reviews
+                return AutofixOutcome("BLOCK", round_no, changed_files, total_changed_lines, "The same finding reoccurred.", repeated_ids), current_reviews
             if not next_fixable:
-                return AutofixOutcome("PASS", round_no, changed_files, total_changed_lines, "修正後の再レビューで問題が解消しました。", repeated_ids), current_reviews
+                return AutofixOutcome("PASS", round_no, changed_files, total_changed_lines, "Issues resolved in post-fix review.", repeated_ids), current_reviews
 
-    return AutofixOutcome("HUMAN_REVIEW_REQUIRED", max_rounds, changed_files, total_changed_lines, "最大修正回数に到達しました。", repeated_ids), current_reviews
+    return AutofixOutcome("HUMAN_REVIEW_REQUIRED", max_rounds, changed_files, total_changed_lines, "Maximum fix iterations reached.", repeated_ids), current_reviews
 
 
 def _find_fixable_findings(reviews: list[ReviewResult]):
@@ -115,7 +115,7 @@ def _apply_single_fix(root: Path, finding, provider: Provider | None = None, fal
     prompt_path = Path("prompts/autofix.md")
     system_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "You are an autofix bot."
     
-    user_prompt = f"以下のファイルの内容と、指摘内容をもとにコードを修正してください。\n\n【対象ファイル】\n```\n{text}\n```\n\n【指摘内容】\n- ID: {finding.id}\n- タイトル: {finding.title}\n- 詳細: {finding.description}\n- 推奨対応: {finding.recommendation}"
+    user_prompt = f"Please modify the code based on the file content and the reported findings.\n\n[Target File]\n```\n{text}\n```\n\n[Findings]\n- ID: {finding.id}\n- Title: {finding.title}\n- Details: {finding.description}\n- Recommendation: {finding.recommendation}"
     
     def try_generate(p: Provider) -> int | None:
         try:

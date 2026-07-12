@@ -9,7 +9,7 @@ from .autofix import run_autofix
 from .config import load_ai_quality_config
 from .diff import read_diff
 from .review import review_diff
-from .reviewers import final_audit, review_documentation, review_requirements, review_tests, to_json_ready
+from .reviewers import final_audit, unified_review, to_json_ready
 from .schema import validate_against_schema, validate_review_result
 
 
@@ -142,7 +142,7 @@ def _render_full_report(reviews, audit, provider_report: Provider | None = None)
             print(f"Formatting report with {provider_report.model}...")
             # We skip JSON schema here and just ask for Markdown text
             response = provider_report.generate_review(
-                system_prompt="あなたは優秀なテクニカルライターです。入力されたレビュー結果を元に、人間が読みやすいMarkdownレポートに整形して出力してください。不要な挨拶は省き、レポート本体のみを出力してください。",
+                system_prompt="You are an excellent technical writer. Based on the input review results, format them into a human-readable Markdown report. Output MUST be in Japanese. Omit unnecessary greetings and output only the report body.",
                 user_prompt=base_report,
                 schema=None
             )
