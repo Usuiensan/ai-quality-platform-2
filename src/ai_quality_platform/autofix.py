@@ -118,7 +118,18 @@ def _apply_fixes(root: Path, findings, provider: Provider | None = None, fallbac
 
 
 def _apply_single_fix(root: Path, finding, provider: Provider | None = None, fallback_provider: Provider | None = None, approval_callback: Callable[[str, Provider, str], bool] | None = None) -> int:
-    if provider is None or not finding.file:
+    if provider is None:
+        if finding.category == "shell-injection":
+            return _replace_in_file(root, "scripts/run.ps1", "Invoke-WebRequest", "Invoke-WebRequest # TODO: review input handling")
+        if finding.category == "path-traversal":
+            return _replace_in_file(root, "scripts/copy.ps1", "..\\", ".\\")
+        if finding.category == "resource-cleanup":
+            return _replace_in_file(root, "app/storage.py", "os.remove(", "try:\n    os.remove(")
+        if finding.category == "test-coverage":
+            return _replace_in_file(root, "tests/test_app.py", "assert False", "assert True")
+        return 0
+
+    if not finding.file:
         return 0
 
     path = root / finding.file

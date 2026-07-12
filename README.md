@@ -38,8 +38,8 @@ python -m venv .venv
 # ※ エラーが出る場合は、事前に `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process` を実行してください
 .venv\Scripts\Activate.ps1
 
-# 3. 必要なライブラリをインストール
-pip install pyyaml tiktoken num2words
+# 3. パッケージを開発モードでインストール（依存ライブラリも自動でインストールされます）
+pip install -e .
 ```
 
 ### ステップ 3: Gemini / OpenAI のAPIキーを設定する
