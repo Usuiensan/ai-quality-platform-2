@@ -10,54 +10,21 @@ from .review import render_report, run_ai_review
 def _base_result(reviewer: str) -> ReviewResult:
     return ReviewResult(reviewer=reviewer, verdict="PASS", summary="修正が必要な問題は見つかりませんでした。")
 
-def review_requirements(diff_text: str, issue_text: str = "", pr_text: str = "", provider: Provider | None = None) -> ReviewResult:
+def unified_review(diff_text: str, provider: Provider | None = None) -> ReviewResult:
     if provider is None:
-        return _base_result("requirements")
+        return _base_result("unified_review")
         
     system_prompt = ""
-    prompt_path = Path("prompts/requirements.md")
-    if prompt_path.exists():
-        system_prompt = prompt_path.read_text(encoding="utf-8")
-    
-    system_prompt += "\n\nあなたは要求・仕様のレビュアーです。必ず指定されたJSONフォーマットで回答してください。"
-    
-    user_prompt = f"以下の情報をレビューしてください:\n\n【Issue/要求内容】\n{issue_text}\n\n【PR本文】\n{pr_text}\n\n【Git差分】\n```diff\n{diff_text}\n```"
-    
-    return run_ai_review(provider, system_prompt, user_prompt, "requirements")
-
-
-
-def review_tests(diff_text: str, ci_text: str = "", provider: Provider | None = None) -> ReviewResult:
-    if provider is None:
-        return _base_result("tests")
-        
-    system_prompt = ""
-    prompt_path = Path("prompts/tests.md")
+    prompt_path = Path("prompts/unified-review.md")
     if prompt_path.exists():
         system_prompt = prompt_path.read_text(encoding="utf-8")
         
-    system_prompt += "\n\nあなたはテストのレビュアーです。必ず指定されたJSONフォーマットで回答してください。"
+    system_prompt += "\n\nあなたは統合レビュアーです。必ず指定されたJSONフォーマットで回答してください。"
     
-    user_prompt = f"以下の情報をレビューしてください:\n\n【CI実行結果】\n{ci_text}\n\n【Git差分】\n```diff\n{diff_text}\n```"
+    user_prompt = f"以下の情報を総合的にレビューしてください:\n\n【Git差分】\n```diff\n{diff_text}\n```"
     
-    return run_ai_review(provider, system_prompt, user_prompt, "tests")
+    return run_ai_review(provider, system_prompt, user_prompt, "unified_review")
 
-
-
-def review_documentation(diff_text: str, readme_text: str = "", provider: Provider | None = None) -> ReviewResult:
-    if provider is None:
-        return _base_result("documentation")
-        
-    system_prompt = ""
-    prompt_path = Path("prompts/documentation.md")
-    if prompt_path.exists():
-        system_prompt = prompt_path.read_text(encoding="utf-8")
-        
-    system_prompt += "\n\nあなたはドキュメントのレビュアーです。必ず指定されたJSONフォーマットで回答してください。"
-    
-    user_prompt = f"以下の情報をレビューしてください:\n\n【現在のREADME等】\n{readme_text}\n\n【Git差分】\n```diff\n{diff_text}\n```"
-    
-    return run_ai_review(provider, system_prompt, user_prompt, "documentation")
 
 
 

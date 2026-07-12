@@ -28,6 +28,7 @@ def run_autofix(
     max_total_changed_lines: int = 800,
     review_fn: Callable[[Path], list[ReviewResult]] | None = None,
     provider: Provider | None = None,
+    fallback_provider: Provider | None = None,
 ) -> tuple[AutofixOutcome, list[ReviewResult]]:
     current_reviews = reviews
     changed_files: list[str] = []
@@ -49,7 +50,7 @@ def run_autofix(
             return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "同一 finding が再発しました。", repeated_ids), current_reviews
         seen_fingerprints.add(fingerprint)
 
-        round_changed = _apply_fixes(root, fixable, provider)
+        round_changed = _apply_fixes(root, fixable, provider, fallback_provider)
         if round_changed == 0:
             return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "修正を適用できませんでした。", repeated_ids), current_reviews
 
@@ -94,14 +95,14 @@ def _fingerprint(findings) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
 
 
-def _apply_fixes(root: Path, findings, provider: Provider | None = None) -> int:
+def _apply_fixes(root: Path, findings, provider: Provider | None = None, fallback_provider: Provider | None = None) -> int:
     changed_lines = 0
     for finding in findings:
-        changed_lines += _apply_single_fix(root, finding, provider)
+        changed_lines += _apply_single_fix(root, finding, provider, fallback_provider)
     return changed_lines
 
 
-def _apply_single_fix(root: Path, finding, provider: Provider | None = None) -> int:
+def _apply_single_fix(root: Path, finding, provider: Provider | None = None, fallback_provider: Provider | None = None) -> int:
     if provider is None or not finding.file:
         return 0
 
@@ -116,29 +117,42 @@ def _apply_single_fix(root: Path, finding, provider: Provider | None = None) -> 
     
     user_prompt = f"以下のファイルの内容と、指摘内容をもとにコードを修正してください。\n\n【対象ファイル】\n```\n{text}\n```\n\n【指摘内容】\n- ID: {finding.id}\n- タイトル: {finding.title}\n- 詳細: {finding.description}\n- 推奨対応: {finding.recommendation}"
     
-    response = provider.generate_review(system_prompt, user_prompt)
-    
-    import json
-    try:
-        content = response.content
-        # Markdownコードブロックで囲まれている場合を考慮
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0]
-            
-        data = json.loads(content.strip())
-        if data.get("status") == "fixed":
-            search = data.get("search", "")
-            replace = data.get("replace", "")
-            if search and search in text:
-                new_text = text.replace(search, replace, 1)
-                path.write_text(new_text, encoding="utf-8")
-                return max(1, new_text.count("\n") - text.count("\n"))
-    except Exception as e:
-        print(f"Autofix format error: {e}")
+    def try_generate(p: Provider) -> int | None:
+        try:
+            response = p.generate_review(system_prompt, user_prompt)
+            content = response.content
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+                
+            import json
+            data = json.loads(content.strip())
+            if data.get("status") == "fixed":
+                search = data.get("search", "")
+                replace = data.get("replace", "")
+                if search and search in text:
+                    new_text = text.replace(search, replace, 1)
+                    path.write_text(new_text, encoding="utf-8")
+                    return max(1, new_text.count("\n") - text.count("\n"))
+        except Exception as e:
+            print(f"Autofix format error ({p.model}): {e}")
+        return None
+
+    # Try with default provider
+    result = try_generate(provider)
+    if result is not None:
+        return result
         
+    # Try with fallback provider if available
+    if fallback_provider is not None:
+        print(f"Falling back to stronger model ({fallback_provider.model})...")
+        result = try_generate(fallback_provider)
+        if result is not None:
+            return result
+
     return 0
+
 
 
 def _replace_in_file(root: Path, relative_path: str, needle: str, replacement: str) -> int:

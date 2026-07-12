@@ -14,8 +14,11 @@ localization:
   pull_request_language: ja
   review_language: ja
   documentation_language: ja
-  machine_identifiers: en
-
 ai:
   provider: ollama
-  model: qwen3:4b-instruct
+  models:
+    review: qwen3:8b
+    autofix: qwen3:8b
+    fallback: qwen3:14b
+    audit: qwen3:14b
+    report: gemma3:12b

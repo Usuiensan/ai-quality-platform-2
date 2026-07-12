@@ -21,13 +21,18 @@ def load_ai_quality_config(path: Path) -> AiQualityConfig:
     if not path.exists():
         return AiQualityConfig()
     data = _parse_minimal_yaml(path.read_text(encoding="utf-8"))
+    
+    ai_data = dict(data.get("ai", {}))
+    # Provide sensible defaults based on typical usage if not explicitly set
+    provider = ai_data.get("provider", "openai")
+    
     return AiQualityConfig(
         version=int(data.get("version", 1)),
         preset=str(data.get("preset", "generic")),
         risk_level=str(data.get("risk_level", "medium")),
         reviewers=dict(data.get("reviewers", {})),
         localization=dict(data.get("localization", {})),
-        ai=dict(data.get("ai", {})),
+        ai=ai_data,
         budget=dict(data.get("budget", {})),
     )
 

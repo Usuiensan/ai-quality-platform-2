@@ -23,52 +23,71 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_ai_quality_config(Path(args.config))
     provider_name = config.ai.get("provider", "openai")
-    model = config.ai.get("model", "gpt-4o-mini")
     api_key = os.environ.get("AI_API_KEY", "")
-    try:
-        provider = create_provider(provider_name, model, api_key)
-    except Exception as e:
-        print(f"Provider initialization warning: {e}")
-        provider = None
+    
+    # Load Role-based models
+    models_config = config.ai.get("models", {})
+    if not models_config:
+        # Fallback to legacy single model configuration
+        base_model = config.ai.get("model", "gpt-4o-mini")
+        models_config = {
+            "review": base_model,
+            "autofix": base_model,
+            "fallback": base_model,
+            "audit": base_model,
+            "report": base_model
+        }
+        
+    def _get_provider(role: str) -> Provider | None:
+        model = models_config.get(role)
+        if not model:
+            return None
+        try:
+            return create_provider(provider_name, model, api_key)
+        except Exception as e:
+            print(f"Provider initialization warning for {role}: {e}")
+            return None
+
+    provider_review = _get_provider("review")
+    provider_autofix = _get_provider("autofix")
+    provider_fallback = _get_provider("fallback")
+    provider_audit = _get_provider("audit")
+    provider_report = _get_provider("report")
 
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
-    code_review = review_diff(diff_text, provider)
-    requirements_review = review_requirements(diff_text, provider=provider)
-    tests_review = review_tests(diff_text, provider=provider)
-    docs_review = review_documentation(diff_text, provider=provider)
-    audit = final_audit([code_review, requirements_review, tests_review, docs_review], diff_text, provider=provider)
-    for result in [code_review, requirements_review, tests_review, docs_review, audit]:
+    
+    # Unified Review
+    unified = unified_review(diff_text, provider_review)
+    audit = final_audit([unified], diff_text, provider=provider_audit)
+    
+    for result in [unified, audit]:
+        from .reviewers import to_json_ready
         payload = to_json_ready(result)
         validate_review_result(payload)
         validate_against_schema(payload, Path("schemas/review-result.schema.json"))
+        
     if args.autofix_root:
         import subprocess
         def current_review_fn(root_path: Path):
-            # ワーキングツリーの最新のdiffを取得して再レビュー
             proc = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True, encoding="utf-8", cwd=root_path)
             new_diff = proc.stdout
-            return [
-                review_diff(new_diff, provider),
-                review_requirements(new_diff, provider=provider),
-                review_tests(new_diff, provider=provider),
-                review_documentation(new_diff, provider=provider),
-            ]
+            from .reviewers import unified_review
+            return [unified_review(new_diff, provider_review)]
             
         outcome, current_reviews = run_autofix(
             Path(args.autofix_root), 
-            [code_review, requirements_review, tests_review, docs_review], 
-            provider=provider,
+            [unified], 
+            provider=provider_autofix,
+            fallback_provider=provider_fallback,
             review_fn=current_review_fn,
             max_rounds=3
         )
         
-        # Autofix後の状態を最終監査にかける
-        audit = final_audit(current_reviews, diff_text, provider=provider)
-        report_text = _render_full_report(current_reviews, audit)
+        audit = final_audit(current_reviews, diff_text, provider=provider_audit)
+        report_text = _render_full_report(current_reviews, audit, provider_report)
         report_text += "\n\n" + _render_autofix_block(outcome)
         print(report_text)
         
-        # 受け入れ判定（OKならコミットしてPush）
         if outcome.status == "PASS" and audit.verdict in {"PASS", "WARN"}:
             print("Autofix changes accepted. Committing and pushing to PR...")
             from .github import git_commit_and_push
@@ -80,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             
         return 0 if audit.verdict in {"PASS", "WARN"} else 1
     
-    report_text = _render_full_report([code_review, requirements_review, tests_review, docs_review], audit)
+    report_text = _render_full_report([unified], audit, provider_report)
     print(report_text)
     
     if args.github_pr:
@@ -93,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 
-def _render_full_report(reviews, audit) -> str:
+def _render_full_report(reviews, audit, provider_report: Provider | None = None) -> str:
     lines = [
         "<!-- ai-quality-platform-report -->",
         "# AI品質管理レポート",
@@ -115,7 +134,24 @@ def _render_full_report(reviews, audit) -> str:
         lines.extend(["", "### API Cost", "", f"Total estimated cost: ¥{total_cost:.2f}"])
         
     lines.extend(["", "## 変更概要", "", audit.summary])
-    return "\n".join(lines)
+    
+    base_report = "\n".join(lines)
+    
+    if provider_report:
+        try:
+            print(f"Formatting report with {provider_report.model}...")
+            # We skip JSON schema here and just ask for Markdown text
+            response = provider_report.generate_review(
+                system_prompt="あなたは優秀なテクニカルライターです。入力されたレビュー結果を元に、人間が読みやすいMarkdownレポートに整形して出力してください。不要な挨拶は省き、レポート本体のみを出力してください。",
+                user_prompt=base_report,
+                schema=None
+            )
+            return response.content.strip()
+        except Exception as e:
+            print(f"Report generation error ({provider_report.model}): {e}")
+            return base_report
+            
+    return base_report
 
 
 def _render_autofix_block(outcome) -> str:
