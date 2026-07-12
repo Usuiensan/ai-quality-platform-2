@@ -26,7 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     config = load_ai_quality_config(Path(args.config))
     provider_name = config.ai.get("provider", "openai")
     api_key = os.environ.get("AI_API_KEY", "")
-    if not api_key:
+    base_url = config.ai.get("base_url") or os.environ.get("AI_BASE_URL", None)
+    api_key_missing = (provider_name in {"openai", "gemini"} and not api_key)
+    if api_key_missing:
         print("警告: AI_API_KEY が設定されていないため、AIモデルによる詳細なレビューはスキップされ、簡易的なローカルチェックのみ実行されます。")
     
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
@@ -168,13 +170,13 @@ def main(argv: list[str] | None = None) -> int:
             }
         
     def _get_provider(role: str) -> Provider | None:
-        if not api_key:
+        if provider_name in {"openai", "gemini"} and not api_key:
             return None
         model = models_config.get(role)
         if not model:
             return None
         try:
-            return create_provider(provider_name, model, api_key)
+            return create_provider(provider_name, model, api_key, base_url)
         except Exception as e:
             print(f"Provider initialization warning for {role}: {e}")
             return None
@@ -243,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         
         audit = final_audit(current_reviews, diff_text, provider=provider_audit)
-        report_text = _render_full_report(current_reviews, audit, provider_report, api_key_missing=(not api_key))
+        report_text = _render_full_report(current_reviews, audit, provider_report, api_key_missing=api_key_missing)
         report_text += "\n\n" + _render_autofix_block(outcome)
         print(report_text)
         
@@ -258,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             
         return 0 if audit.verdict in {"PASS", "WARN"} else 1
     
-    report_text = _render_full_report([unified], audit, provider_report, api_key_missing=(not api_key))
+    report_text = _render_full_report([unified], audit, provider_report, api_key_missing=api_key_missing)
     print(report_text)
     
     if args.github_pr:
