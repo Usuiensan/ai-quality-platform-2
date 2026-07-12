@@ -1,125 +1,95 @@
-# AI品質管理プラットフォーム
+# 🚀 AI品質管理プラットフォーム (AI Quality Platform)
 
-複数の GitHub リポジトリに対して、共通の品質ゲートを適用するための中央基盤です。
+複数の GitHub リポジトリに対して、共通の「AIコードレビュー」と「バグ自動修正（Autofix）」を適用するための中央品質管理基盤です。
 
-このリポジトリの Phase 1 では、次を最小構成で提供します。
+「プログラムの詳しい仕組みはわからないけれど、とりあえず手元で動かしてみたい！」というバイブコーディング（プロンプト主導・AI対話型開発）の方に向けて、**PowerShellをコピペするだけで5分で動かせる**手順を用意しました。
 
-- 中央ロジックの土台
-- `.ai-quality.yml` の簡易読み込み
-- ルールベースのレビュー判定
-- JSON スキーマ検証
-- 固定の PR レポート生成
-- 仕様・テスト・ドキュメント・最終監査の独立レビュー
-- 限定的な自動修正ループ
-- GitHub Actions の reusable workflow
-- 標準ライブラリだけで回るテスト
+---
 
-## アーキテクチャ
+## 🛠️ 5分で動かす超速クイックスタート
 
-### 方針
+Windows の **PowerShell** を開いて、以下のコマンドを順番にコピペして実行してください。
 
-- 人間向けの説明は日本語、機械向けの識別子は英語で固定します。
-- 最初の段階では外部 AI API に依存しません。
-- レビューは将来の AI 呼び出しに差し替え可能な構造にしています。
+### ステップ 1: このプロジェクトのフォルダに移動する
+PowerShellで、このリポジトリ（`ai-quality-platform 2`）がある場所に移動します。
+```powershell
+cd "C:\Users\miwam\OneDrive\ドキュメント\ai-quality-platform 2"
+```
 
-### 構成
+### ステップ 2: 必要なライブラリをインストールする（初回のみ）
+Pythonがインストールされている環境で、以下のコマンドを実行します。
+```powershell
+pip install pyyaml tiktoken num2words
+```
 
-- `src/ai_quality_platform/`
-  - 設定読み込み
-  - diff の抽出
-  - ルールベースレビュー
-  - レポート生成
-  - 独立レビュー種別の実行
-- `schemas/`
-  - review result と config の JSON Schema
-- `prompts/`
-  - 将来の AI プロンプトの雛形
-- `templates/repository-template/`
-  - 新規リポジトリ作成時に使う最小テンプレート
-- `.github/workflows/`
-  - reusable workflow の雛形
-- `tests/`
-  - 失敗系を含む最小検証
+### ステップ 3: Gemini / OpenAI のAPIキーを設定する
+AIモデルを呼び出すためのAPIキーを設定します。一時的な環境変数としてPowerShellに登録します。
+```powershell
+# Gemini APIを使う場合 (推奨・最新世代の高速ルーティングに対応)
+$env:AI_API_KEY="AI_STUDIOで取得したAPIキー"
 
-## 実行方法
+# OpenAI APIを使う場合
+$env:AI_API_KEY="OpenAIで取得したAPIキー"
+```
 
-### テスト
+### ステップ 4: 実際にチェックを実行してみる！
+付属のダミー差分ファイル（`diff.txt`）を使って、最新のAI（Gemini 2.5など）をフル活用する「お急ぎモード」で実行します。
+```powershell
+python -m ai_quality_platform.cli --diff diff.txt --urgent --autofix-root .
+```
 
+---
+
+## 💡 動かした時の画面の流れ (これだけ知っておけばOK!)
+
+### 1. 初回の見積もりの承認
+実行すると、AIが「もしエラーなしで一発成功した場合にいくらかかるか（ハッピーパス）」を計算し、1.2倍の安全マージンと切り上げ処理（1001円→1010円など）を行った最大想定コストを日本円で提示します。
+
+- **1円未満の場合**: `コストが1円未満のため自動承認されました` と表示され、そのまま進行します。
+- **100円以下の数字が出た場合**:
+  ```text
+  初回見積もりコストを承認しますか？ 見積もりコスト: 10.00 JPY。進行するには 'ok' と入力してください:
+  ```
+  → キーボードで `ok` と打ってEnterを押すと進みます。
+- **100円を超える高額な数字が出た場合（安全ロック）**:
+  誤課金を防ぐために、スペルアウトされた英語入力を求められます。
+  ```text
+  【高額警告】見積もりコストは JPY 130.00 です。
+  承認するには、正確に 'One hundred thirty yen' と入力してください:
+  ```
+  → **`One hundred thirty yen`** と正確にタイピング（コピペも可）してEnterを押すと進みます。
+  
+  ⚠️ **もし `expensive`（高い）や `nope`（嫌だ）などの拒否ワードを打つと、即座に実行をキャンセルします。**
+  ✍️ タイポした場合は `本当に拒否しますか？それとも再入力しますか？ [retry/abort]` と聞かれるので、`retry`（または `r`）と打てばやり直せます。
+
+### 2. 反復修正やエラー時の「追加見積もり」
+AIが自動修正（Autofix）を試みて失敗した場合や、フォーマットエラーでより強力なモデル（`gemini-2.5-pro` など）へ切り替える必要が出た場合、**その場で追加のコストを計算して再承認を求めます**。
+```text
+[追加見積もり] Fallback Model Retry
+追加コスト: +JPY 120.00 (合計: JPY 130.00)
+【高額警告】見積もりコストは JPY 120.00 です。
+承認するには、正確に 'One hundred twenty yen' と入力してください:
+```
+バックグラウンドで知らない間に高額な請求が発生する心配はありません！
+
+---
+
+## ⚙️ AIエディタ（Cursor/Windsurfなど）で簡単にカスタマイズする
+
+バイブコーディングの際、AIエディタに以下を指示して編集させると便利です。
+
+- **AIの価格設定を変更したいとき**:
+  [models_pricing.json](file:///c:/Users/miwam/OneDrive/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/ai-quality-platform%202/src/ai_quality_platform/models_pricing.json) を開き、各モデルの `input`（入力100万トークンあたり）と `output`（出力100万トークンあたり）の価格（ドル）を書き換えます。
+- **拒否ワード（高い、やめる、など）を追加・変更したいとき**:
+  [rejection_words.json](file:///c:/Users/miwam/OneDrive/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/ai-quality-platform%202/src/ai_quality_platform/rejection_words.json) に拒否させたい単語を追加します。半角英語なら単語完全一致、日本語などの全角文字なら部分一致で自動検知されます。
+- **自動修正用の指示（プロンプト）を書き換えたいとき**:
+  [prompts/autofix.md](file:///c:/Users/miwam/OneDrive/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/ai-quality-platform%202/prompts/autofix.md) を直接書き換えて、AIに指示したい修正のトーンや注意点を調整します。
+
+---
+
+## 🧪 テストの実行方法
+
+プログラムが正しく動いているかを検証する自動テストを実行します。
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
 ```
-
-### PowerShell 7 モジュール
-
-```powershell
-Import-Module .\powershell\AiQuality\AiQuality.psd1 -Force
-```
-
-新規リポジトリを作成して AI 品質管理を導入します。
-
-```powershell
-New-AiManagedRepo `
-  -Name "youtube-tool-example" `
-  -Visibility Private `
-  -Preset Python `
-  -Description "YouTube字幕処理ツール"
-```
-
-既存リポジトリへ一括導入 PR を作成します。
-
-```powershell
-Enable-AiQuality `
-  -Owner Usuiensan `
-  -AllRepositories `
-  -ExcludeArchived `
-  -ExcludeForks `
-  -CreatePullRequest
-```
-
-導入状況を確認します。
-
-```powershell
-Get-AiQualityStatus -Owner Usuiensan -AllRepositories
-```
-
-中央基盤の参照バージョンを更新する PR を作成します。
-
-```powershell
-Update-AiQuality `
-  -Owner Usuiensan `
-  -AllRepositories `
-  -CreatePullRequest `
-  -TargetRef v1
-```
-
-Ruleset を設定します。
-
-```powershell
-Set-AiQualityRuleset -Owner Usuiensan -Repository youtube-subtitle-mp4-proxy
-```
-
-### レポート生成の考え方
-
-Phase 1 では GitHub Actions 上で、差分から危険な変更を検出し、固定の日本語レポートを作ります。
-将来はここに AI レビュアーを差し込んでいきます。
-
-## 既知の制約
-
-- 本版は AI API 連携をまだ持ちません。
-- YAML は最小対応の簡易ローダーです。
-- PR コメント更新は未実装です。
-- JSON Schema は最小検証です。
-- PowerShell CLI は `gh` と `gh auth login` 済みの環境を前提にします。
-
-## セキュリティ上の注意
-
-- Secrets はまだ扱いません。
-- 未信頼コードを高権限で実行する設計は避けています。
-- 自動修正は限定的な文字列置換に留めています。
-
-## Phase 2 以降
-
-- Requirements / Test / Documentation レビュアー追加
-- Final Auditor の強化
-- 自動修正ループの強化
-- Ruleset 用 Check 名の固定
