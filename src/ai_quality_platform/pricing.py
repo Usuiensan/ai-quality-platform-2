@@ -62,22 +62,22 @@ def estimate_cost_jpy(model_name: str, input_tokens: int, output_tokens: int) ->
 def select_urgent_models(input_tokens: int) -> dict[str, str]:
     """
     Select models dynamically based on estimated input tokens.
-    Prioritizes Gemini 1.5 models.
+    Prioritizes Gemini 2.5 models.
     """
     if input_tokens > 100_000:
-        base_model = "gemini-1.5-pro"
+        base_model = "gemini-2.5-pro"
         return {
             "review": base_model,
             "autofix": base_model,
             "fallback": base_model,
             "audit": base_model,
-            "report": "gemini-1.5-flash"
+            "report": "gemini-2.5-flash"
         }
     else:
         return {
-            "review": "gemini-1.5-flash",       
-            "autofix": "gemini-1.5-flash",      
-            "fallback": "gemini-1.5-pro",          
-            "audit": "gemini-1.5-pro",             
-            "report": "gemini-1.5-flash"        
+            "review": "gemini-2.5-flash",       
+            "autofix": "gemini-2.5-flash",      
+            "fallback": "gemini-2.5-pro",          
+            "audit": "gemini-2.5-pro",             
+            "report": "gemini-2.5-flash"        
         }
