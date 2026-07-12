@@ -4,4 +4,9 @@ __pycache__/
 dist/
 build/
 *.pyc
-
+*.log
+.env
+.DS_Store
+diff.txt
+dummy_app.py
+docs/build/
