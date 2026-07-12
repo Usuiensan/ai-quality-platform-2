@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ai_quality_platform.review import review_diff, render_report
-from ai_quality_platform.reviewers import final_audit, review_documentation, review_requirements, review_tests
+from ai_quality_platform.reviewers import final_audit, review_documentation, review_requirements, review_tests, unified_review
 
 
 class ReviewTests(unittest.TestCase):
@@ -45,6 +45,11 @@ class ReviewTests(unittest.TestCase):
         blocked = review_requirements("", issue_text="破壊的変更")
         result = final_audit([blocked], "workflow change")
         self.assertEqual(result.verdict, "BLOCK")
+
+    def test_unified_review_fallback(self) -> None:
+        result = unified_review("Invoke-WebRequest https://example.test", provider=None)
+        self.assertEqual(result.verdict, "BLOCK")
+        self.assertEqual(result.reviewer, "unified_review")
 
 
 if __name__ == "__main__":

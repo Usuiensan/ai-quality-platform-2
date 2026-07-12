@@ -12,7 +12,10 @@ def _base_result(reviewer: str) -> ReviewResult:
 
 def unified_review(diff_text: str, provider: Provider | None = None) -> ReviewResult:
     if provider is None:
-        return _base_result("unified_review")
+        from .review import review_diff
+        result = review_diff(diff_text, None)
+        result.reviewer = "unified_review"
+        return result
         
     system_prompt = ""
     prompt_path = Path("prompts/unified-review.md")

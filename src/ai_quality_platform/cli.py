@@ -165,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             }
         
     def _get_provider(role: str) -> Provider | None:
+        if not api_key:
+            return None
         model = models_config.get(role)
         if not model:
             return None
