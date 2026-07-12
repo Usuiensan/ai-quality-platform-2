@@ -1,0 +1,22 @@
+{
+  "gpt-4o": {
+    "input": 5.00,
+    "output": 15.00,
+    "max_tokens": 128000
+  },
+  "gpt-4o-mini": {
+    "input": 0.15,
+    "output": 0.60,
+    "max_tokens": 128000
+  },
+  "gemini-1.5-pro": {
+    "input": 3.50,
+    "output": 10.50,
+    "max_tokens": 2000000
+  },
+  "gemini-1.5-flash": {
+    "input": 0.075,
+    "output": 0.30,
+    "max_tokens": 1000000
+  }
+}
