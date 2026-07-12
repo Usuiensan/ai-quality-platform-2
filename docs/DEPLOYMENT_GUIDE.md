@@ -71,3 +71,78 @@ New-AiManagedRepo -TemplatePath "path/to/ai-quality-platform/templates/repositor
 
 ### カスタマイズ
 対象リポジトリの `.ai-quality.yml` を編集することで、プロジェクト固有のルールや予算上限 (`auto_approve_threshold`) を設定できます。最新のモデル価格はプラットフォーム側の `models_pricing.json` を更新するだけで全リポジトリに反映されます。
+
+---
+
+## 4. セルフホストランナー（Self-Hosted Runner）でのローカルLLM運用
+
+自宅のローカルマシンで Ollama 等のローカルLLMを動かし、GitHub Actions からそれを呼び出す場合、GitHubがホストする runner（`ubuntu-latest` 等）からは自宅のローカルAPIにアクセスできません。
+そのため、自宅マシンで **Self-Hosted Runner**（セルフホストランナー）をセットアップし、そこでジョブを実行する必要があります。
+
+### Windows のセルフホストランナーでの注意点と対策
+
+Windows のセルフホストランナー環境では、標準の `actions/setup-python@v5` アクションがファイルのダウンロードや展開、権限問題（Tool Cache）によって失敗しやすくなります。
+最も安定する修正方法は、**`setup-python` の使用をやめて、ランナーマシンにインストール済みの Python 環境をそのまま利用する**ことです。
+
+#### 設定手順
+
+1. **Python のインストールとパス通し**:
+   ランナーとなる Windows マシンに Python 3.12 以上のバージョンをインストールし、環境変数 `PATH` に Python と `pip` のパスを追加してください。
+   * 動作確認コマンド:
+     ```powershell
+     python --version
+     pip --version
+     ```
+
+2. **専用のワークフローファイルの設定**:
+   対象リポジトリの `.github/workflows/ai-quality.yml` を以下のように記述し、ランナー上の Python を直接叩くように構成します。
+
+   ```yaml
+   name: AI Quality Gate (Self-Hosted)
+
+   on:
+     pull_request:
+       branches:
+         - main
+       types:
+         - opened
+         - synchronize
+         - reopened
+         - ready_for_review
+
+   permissions:
+     contents: write
+     pull-requests: write
+     checks: write
+
+   jobs:
+     review:
+       # 自宅マシンのセルフホストランナーを指定するラベル
+       runs-on: [self-hosted, windows, x64, ollama]
+       if: github.event.pull_request.draft == false
+       steps:
+         - name: Checkout repository
+           uses: actions/checkout@v4
+           with:
+             fetch-depth: 0
+
+         - name: Check Python
+           shell: pwsh
+           run: python --version
+
+         - name: Install AI Quality Platform
+           shell: pwsh
+           run: |
+             python -m pip install --upgrade pip
+             python -m pip install -e .
+
+         - name: Run AI Quality Gate
+           shell: pwsh
+           env:
+             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+             # 必要に応じて環境変数経由でローカルLLMのエンドポイントを指定
+             # AI_BASE_URL: "http://localhost:11434/v1/chat/completions"
+           run: |
+             python -m ai_quality_platform.cli --config .ai-quality.yml --github-pr --autofix-root .
+   ```
+
