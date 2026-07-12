@@ -26,12 +26,15 @@ def main(argv: list[str] | None = None) -> int:
     config = load_ai_quality_config(Path(args.config))
     provider_name = config.ai.get("provider", "openai")
     api_key = os.environ.get("AI_API_KEY", "")
+    if not api_key:
+        print("警告: AI_API_KEY が設定されていないため、AIモデルによる詳細なレビューはスキップされ、簡易的なローカルチェックのみ実行されます。")
     
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
     
     def request_budget_approval(target_cost: float, prompt_prefix: str = "承認しますか？") -> bool:
-        if target_cost < 1.0:
-            print(f"コストが1円未満のため自動承認されました ({target_cost:.2f} JPY)。")
+        threshold = max(1.0, float(config.budget.get("auto_approve_threshold", 0.0)))
+        if target_cost < threshold:
+            print(f"コストが自動承認しきい値 ({threshold:.2f} JPY) 未満のため自動承認されました ({target_cost:.2f} JPY)。")
             return True
         elif target_cost <= 100.0:
             reply = input(f"{prompt_prefix} 見積もりコスト: {target_cost:.2f} JPY。進行するには 'ok' と入力してください: ")
@@ -240,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         
         audit = final_audit(current_reviews, diff_text, provider=provider_audit)
-        report_text = _render_full_report(current_reviews, audit, provider_report)
+        report_text = _render_full_report(current_reviews, audit, provider_report, api_key_missing=(not api_key))
         report_text += "\n\n" + _render_autofix_block(outcome)
         print(report_text)
         
@@ -255,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
             
         return 0 if audit.verdict in {"PASS", "WARN"} else 1
     
-    report_text = _render_full_report([unified], audit, provider_report)
+    report_text = _render_full_report([unified], audit, provider_report, api_key_missing=(not api_key))
     print(report_text)
     
     if args.github_pr:
@@ -268,11 +271,19 @@ def main(argv: list[str] | None = None) -> int:
 
 
 
-def _render_full_report(reviews, audit, provider_report: Provider | None = None) -> str:
+def _render_full_report(reviews, audit, provider_report: Provider | None = None, api_key_missing: bool = False) -> str:
     lines = [
         "<!-- ai-quality-platform-report -->",
         "# AI品質管理レポート",
         "",
+    ]
+    if api_key_missing:
+        lines.extend([
+            "> [!WARNING]",
+            "> APIキーが設定されていないため、AIモデルによる詳細なレビューはスキップされ、簡易的なローカルチェックのみ実行されました。",
+            "",
+        ])
+    lines.extend([
         "## 総合判定",
         "",
         f"**{audit.verdict}**",
@@ -281,7 +292,7 @@ def _render_full_report(reviews, audit, provider_report: Provider | None = None)
         "",
         "| 担当 | 判定 | 指摘数 |",
         "|---|---:|---:|",
-    ]
+    ])
     for review in reviews + [audit]:
         lines.append(f"| {review.reviewer} | {review.verdict} | {len(review.findings)} |")
     
