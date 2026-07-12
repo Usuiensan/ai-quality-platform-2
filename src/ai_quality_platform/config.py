@@ -26,6 +26,10 @@ def load_ai_quality_config(path: Path) -> AiQualityConfig:
     # Provide sensible defaults based on typical usage if not explicitly set
     provider = ai_data.get("provider", "openai")
     
+    budget_data = dict(data.get("budget", {}))
+    if "auto_approve_threshold" not in budget_data:
+        budget_data["auto_approve_threshold"] = 0.0 # Default to 0, meaning always ask for approval unless --yes
+
     return AiQualityConfig(
         version=int(data.get("version", 1)),
         preset=str(data.get("preset", "generic")),
@@ -33,7 +37,7 @@ def load_ai_quality_config(path: Path) -> AiQualityConfig:
         reviewers=dict(data.get("reviewers", {})),
         localization=dict(data.get("localization", {})),
         ai=ai_data,
-        budget=dict(data.get("budget", {})),
+        budget=budget_data,
     )
 
 

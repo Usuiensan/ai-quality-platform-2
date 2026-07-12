@@ -19,24 +19,56 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--diff", default=None)
     parser.add_argument("--autofix-root", default=None)
     parser.add_argument("--github-pr", action="store_true", help="Post report to GitHub PR")
+    parser.add_argument("--urgent", action="store_true", help="Run in high-performance mode using cloud APIs")
+    parser.add_argument("--yes", "-y", action="store_true", help="Automatically approve budget estimates")
     args = parser.parse_args(argv)
 
     config = load_ai_quality_config(Path(args.config))
     provider_name = config.ai.get("provider", "openai")
     api_key = os.environ.get("AI_API_KEY", "")
     
-    # Load Role-based models
-    models_config = config.ai.get("models", {})
-    if not models_config:
-        # Fallback to legacy single model configuration
-        base_model = config.ai.get("model", "gpt-4o-mini")
-        models_config = {
-            "review": base_model,
-            "autofix": base_model,
-            "fallback": base_model,
-            "audit": base_model,
-            "report": base_model
-        }
+    diff_text = read_diff(Path(args.diff)) if args.diff else ""
+    
+    if args.urgent:
+        from .pricing import estimate_tokens, select_urgent_models, estimate_cost_jpy
+        input_tokens = estimate_tokens(diff_text)
+        print(f"[Urgent Mode] Estimated input tokens: {input_tokens}")
+        models_config = select_urgent_models(input_tokens)
+        provider_name = "openai" if "gpt" in models_config["review"] else "gemini"
+        
+        # Estimate output tokens (rough guess: 10% of input, min 500)
+        output_tokens = max(500, input_tokens // 10)
+        cost = 0.0
+        for role, model in models_config.items():
+            # For autofix, might iterate up to 3 times
+            multiplier = 3 if role == "autofix" else 1
+            cost += estimate_cost_jpy(model, input_tokens * multiplier, output_tokens * multiplier)
+            
+        print(f"[Urgent Mode] Selected provider: {provider_name}")
+        print(f"[Urgent Mode] Models: {models_config}")
+        print(f"[Urgent Mode] Estimated Cost: JPY {cost:.2f}")
+        
+        threshold = float(config.budget.get("auto_approve_threshold", 0.0))
+        if not args.yes and cost > threshold:
+            reply = input(f"Approve estimated cost of JPY {cost:.2f}? [y/N]: ")
+            if reply.lower() not in ["y", "yes"]:
+                print("Aborted by user.")
+                return 1
+        else:
+            print("Budget auto-approved.")
+    else:
+        # Load Role-based models
+        models_config = config.ai.get("models", {})
+        if not models_config:
+            # Fallback to legacy single model configuration
+            base_model = config.ai.get("model", "gpt-4o-mini")
+            models_config = {
+                "review": base_model,
+                "autofix": base_model,
+                "fallback": base_model,
+                "audit": base_model,
+                "report": base_model
+            }
         
     def _get_provider(role: str) -> Provider | None:
         model = models_config.get(role)
@@ -53,8 +85,6 @@ def main(argv: list[str] | None = None) -> int:
     provider_fallback = _get_provider("fallback")
     provider_audit = _get_provider("audit")
     provider_report = _get_provider("report")
-
-    diff_text = read_diff(Path(args.diff)) if args.diff else ""
     
     # Unified Review
     unified = unified_review(diff_text, provider_review)
@@ -131,7 +161,7 @@ def _render_full_report(reviews, audit, provider_report: Provider | None = None)
     
     total_cost = sum(r.estimated_cost_jpy for r in reviews + [audit])
     if total_cost > 0:
-        lines.extend(["", "### API Cost", "", f"Total estimated cost: ¥{total_cost:.2f}"])
+        lines.extend(["", "### API Cost", "", f"Total estimated cost: JPY {total_cost:.2f}"])
         
     lines.extend(["", "## 変更概要", "", audit.summary])
     
