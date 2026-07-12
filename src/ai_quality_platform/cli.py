@@ -29,71 +29,132 @@ def main(argv: list[str] | None = None) -> int:
     
     diff_text = read_diff(Path(args.diff)) if args.diff else ""
     
+    def request_budget_approval(target_cost: float, prompt_prefix: str = "承認しますか？") -> bool:
+        if target_cost < 1.0:
+            print(f"コストが1円未満のため自動承認されました ({target_cost:.2f} JPY)。")
+            return True
+        elif target_cost <= 100.0:
+            reply = input(f"{prompt_prefix} 見積もりコスト: {target_cost:.2f} JPY。進行するには 'ok' と入力してください: ")
+            if reply.strip().lower() != "ok":
+                print("ユーザーにより処理が中断されました。")
+                return False
+            return True
+        else:
+            try:
+                from num2words import num2words
+                integer_part = int(target_cost)
+                # Generate words, strip 'and', and capitalize the first letter
+                words = num2words(integer_part).replace(" and ", " ").capitalize()
+                expected_str = f"{words} yen"
+            except ImportError:
+                expected_str = f"{target_cost:.2f} yen"
+            
+            # Load rejection words from external file
+            rejection_words = [
+                "takai", "haraeru", "fuck", "shit", "no", "abort", "cancel", "reject",
+                "だめ", "ダメ", "高い", "払えるか"
+            ]
+            rejection_words_path = Path(__file__).parent / "rejection_words.json"
+            if rejection_words_path.exists():
+                try:
+                    import json
+                    rejection_words = json.loads(rejection_words_path.read_text(encoding="utf-8"))
+                except Exception as e:
+                    print(f"警告: 拒否ワードファイルの読み込みに失敗しました: {e}")
+            
+            number_keywords = {
+                "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+                "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+                "eighty", "ninety", "hundred", "thousand", "million", "billion", "yen", "and"
+            }
+            
+            print(f"【高額警告】見積もりコストは JPY {target_cost:.2f} です。")
+            while True:
+                reply = input(f"承認するには、正確に '{expected_str}' と入力してください: ").strip()
+                if reply == expected_str:
+                    return True
+                
+                # Check rejection words
+                reply_lower = reply.lower()
+                words_in_reply = {w.strip("!,.-?\"'") for w in reply_lower.split()}
+                
+                is_reject = False
+                for rw in rejection_words:
+                    rw_lower = rw.lower()
+                    # If it's alphanumeric and pure ASCII, check whole word
+                    if rw_lower.isalnum() and all(c.isascii() for c in rw_lower):
+                        if rw_lower in words_in_reply:
+                            is_reject = True
+                            break
+                    else:
+                        # Otherwise check substring (e.g. Japanese words)
+                        if rw_lower in reply_lower:
+                            is_reject = True
+                            break
+                
+                if is_reject:
+                    print("ユーザーにより処理が中断されました（ユーザーの拒否意図を伺わせる単語が検出されました）。")
+                    return False
+                
+                # Check if it looks like an attempted spell-out or numbers (for typo check)
+                words_in_reply_loose = {w.lower() for w in reply.replace("-", " ").replace(",", "").split()}
+                has_number_kw = bool(words_in_reply_loose & number_keywords)
+                has_digits = any(char.isdigit() for char in reply)
+                
+                if has_number_kw or has_digits:
+                    print(f"入力内容が予想される文字列 '{expected_str}' と一致しませんでした。")
+                    choice = input("本当に拒否しますか？それとも再入力しますか？ [retry (再入力) / abort (中断)]: ").strip().lower()
+                    if choice in ("retry", "r", "再入力"):
+                        continue
+                    else:
+                        print("ユーザーにより処理が中断されました。")
+                        return False
+                else:
+                    # Anything else that's not matching keywords (nonsense words) -> Immediate abort
+                    print("ユーザーにより処理が中断されました（無効な入力が検出されました）。")
+                    return False
+
+    total_approved_cost = 0.0
+
     if args.urgent:
         from .pricing import estimate_tokens, select_urgent_models, estimate_cost_jpy
         input_tokens = estimate_tokens(diff_text)
-        print(f"[Urgent Mode] Estimated input tokens: {input_tokens}")
+        print(f"[お急ぎモード] 想定入力トークン数: {input_tokens}")
         models_config = select_urgent_models(input_tokens)
         provider_name = "openai" if "gpt" in models_config["review"] else "gemini"
         
-        # Estimate output tokens (rough guess: 10% of input, min 500)
-        input_tokens = estimate_tokens(diff_text)
-        
-        # Calculate conservative multi-stage cost
-        # Review
+        # Calculate conservative multi-stage cost (Happy path)
         cost_review = estimate_cost_jpy(models_config["review"], input_tokens, 1500)
-        # Autofix (Assume 1 round + 1 fallback round for safety)
         cost_autofix = estimate_cost_jpy(models_config["autofix"], input_tokens, 2000)
-        cost_fallback = estimate_cost_jpy(models_config["fallback"], input_tokens, 2000)
-        # Audit
         cost_audit = estimate_cost_jpy(models_config["audit"], input_tokens, 1000)
-        # Report (approx 3000 input, 2000 output)
         cost_report = estimate_cost_jpy(models_config["report"], 3000, 2000)
         
-        raw_cost = cost_review + cost_autofix + cost_fallback + cost_audit + cost_report
-        # Apply 1.2x safety factor
+        raw_cost = cost_review + cost_autofix + cost_audit + cost_report
         safe_cost = raw_cost * 1.2
         
-        # Rounding up (e.g., to nearest 10 if > 10, else to integer)
         import math
         if safe_cost > 10.0:
             cost = math.ceil(safe_cost / 10.0) * 10.0
         elif safe_cost >= 1.0:
             cost = float(math.ceil(safe_cost))
         else:
-            cost = safe_cost  # Keep under 1.0 raw for auto-approval
+            cost = safe_cost
+            
+        total_approved_cost = cost
 
-        print(f"[Urgent Mode] Selected provider: {provider_name}")
-        print(f"[Urgent Mode] Models: {models_config}")
-        print(f"[Urgent Mode] Estimated Max Cost: JPY {cost:.2f}")
+        print(f"[お急ぎモード] 選択プロバイダ: {provider_name}")
+        print(f"[お急ぎモード] 使用モデル: {models_config}")
+        print(f"[お急ぎモード] 初回見積もり（最大想定額）: JPY {cost:.2f}")
         
-        if cost < 1.0:
-            print(f"Cost is under 1 JPY ({cost:.2f} JPY). Auto-approving.")
-        elif cost <= 100.0:
-            if not args.yes:
-                reply = input(f"Approve estimated max cost of JPY {cost:.2f}? Type 'ok' to proceed: ")
-                if reply.strip().lower() != "ok":
-                    print("Aborted by user.")
-                    return 1
-        else:
-            if not args.yes:
-                try:
-                    from num2words import num2words
-                    words = num2words(int(cost)).replace(" ", "-").replace(",", "")
-                    expected_str = f"{words}-JPY"
-                except ImportError:
-                    expected_str = f"{int(cost)}-JPY"
-                
-                print(f"High cost warning! Estimated cost is JPY {cost:.2f}.")
-                reply = input(f"To approve, please type exactly '{expected_str}': ")
-                if reply.strip().lower() != expected_str.lower():
-                    print("Aborted by user. Input did not match.")
-                    return 1
+        if not args.yes:
+            if not request_budget_approval(cost, "初回見積もりコストを承認しますか？"):
+                return 1
+
     else:
         # Load Role-based models
         models_config = config.ai.get("models", {})
         if not models_config:
-            # Fallback to legacy single model configuration
             base_model = config.ai.get("model", "gpt-4o-mini")
             models_config = {
                 "review": base_model,
@@ -119,6 +180,35 @@ def main(argv: list[str] | None = None) -> int:
     provider_audit = _get_provider("audit")
     provider_report = _get_provider("report")
     
+    def approval_callback(action_name: str, p: Provider, text: str) -> bool:
+        if not args.urgent or args.yes:
+            return True
+            
+        from .pricing import estimate_tokens, estimate_cost_jpy
+        import math
+        
+        tokens = estimate_tokens(text)
+        raw_cost = estimate_cost_jpy(p.model, tokens, 2000)
+        safe_cost = raw_cost * 1.2
+        
+        if safe_cost > 10.0:
+            add_cost = math.ceil(safe_cost / 10.0) * 10.0
+        elif safe_cost >= 1.0:
+            add_cost = float(math.ceil(safe_cost))
+        else:
+            add_cost = safe_cost
+            
+        nonlocal total_approved_cost
+        new_total = total_approved_cost + add_cost
+        
+        print(f"\n[追加見積もり] {action_name}")
+        print(f"追加コスト: +JPY {add_cost:.2f} (合計: JPY {new_total:.2f})")
+        
+        if request_budget_approval(add_cost, "追加コストを承認しますか？"):
+            total_approved_cost = new_total
+            return True
+        return False
+    
     # Unified Review
     unified = unified_review(diff_text, provider_review)
     audit = final_audit([unified], diff_text, provider=provider_audit)
@@ -143,7 +233,8 @@ def main(argv: list[str] | None = None) -> int:
             provider=provider_autofix,
             fallback_provider=provider_fallback,
             review_fn=current_review_fn,
-            max_rounds=3
+            max_rounds=3,
+            approval_callback=approval_callback
         )
         
         audit = final_audit(current_reviews, diff_text, provider=provider_audit)
