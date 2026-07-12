@@ -37,22 +37,41 @@ def main(argv: list[str] | None = None) -> int:
         provider_name = "openai" if "gpt" in models_config["review"] else "gemini"
         
         # Estimate output tokens (rough guess: 10% of input, min 500)
-        output_tokens = max(500, input_tokens // 10)
-        cost = 0.0
-        for role, model in models_config.items():
-            # For autofix, might iterate up to 3 times
-            multiplier = 3 if role == "autofix" else 1
-            cost += estimate_cost_jpy(model, input_tokens * multiplier, output_tokens * multiplier)
-            
+        input_tokens = estimate_tokens(diff_text)
+        
+        # Calculate conservative multi-stage cost
+        # Review
+        cost_review = estimate_cost_jpy(models_config["review"], input_tokens, 1500)
+        # Autofix (Assume 1 round + 1 fallback round for safety)
+        cost_autofix = estimate_cost_jpy(models_config["autofix"], input_tokens, 2000)
+        cost_fallback = estimate_cost_jpy(models_config["fallback"], input_tokens, 2000)
+        # Audit
+        cost_audit = estimate_cost_jpy(models_config["audit"], input_tokens, 1000)
+        # Report (approx 3000 input, 2000 output)
+        cost_report = estimate_cost_jpy(models_config["report"], 3000, 2000)
+        
+        raw_cost = cost_review + cost_autofix + cost_fallback + cost_audit + cost_report
+        # Apply 1.2x safety factor
+        safe_cost = raw_cost * 1.2
+        
+        # Rounding up (e.g., to nearest 10 if > 10, else to integer)
+        import math
+        if safe_cost > 10.0:
+            cost = math.ceil(safe_cost / 10.0) * 10.0
+        elif safe_cost >= 1.0:
+            cost = float(math.ceil(safe_cost))
+        else:
+            cost = safe_cost  # Keep under 1.0 raw for auto-approval
+
         print(f"[Urgent Mode] Selected provider: {provider_name}")
         print(f"[Urgent Mode] Models: {models_config}")
-        print(f"[Urgent Mode] Estimated Cost: JPY {cost:.2f}")
+        print(f"[Urgent Mode] Estimated Max Cost: JPY {cost:.2f}")
         
         if cost < 1.0:
             print(f"Cost is under 1 JPY ({cost:.2f} JPY). Auto-approving.")
         elif cost <= 100.0:
             if not args.yes:
-                reply = input(f"Approve estimated cost of JPY {cost:.2f}? Type 'ok' to proceed: ")
+                reply = input(f"Approve estimated max cost of JPY {cost:.2f}? Type 'ok' to proceed: ")
                 if reply.strip().lower() != "ok":
                     print("Aborted by user.")
                     return 1
