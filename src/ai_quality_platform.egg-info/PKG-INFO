@@ -1,3 +1,15 @@
+Metadata-Version: 2.4
+Name: ai-quality-platform
+Version: 0.1.0
+Summary: Central quality gate platform for GitHub repositories
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyyaml
+Requires-Dist: tiktoken
+Requires-Dist: num2words
+Dynamic: license-file
+
 # 🚀 AI品質管理プラットフォーム (AI Quality Platform)
 
 複数の GitHub リポジトリに対して、共通の「AIコードレビュー」と「バグ自動修正（Autofix）」を適用するための中央品質管理基盤です。

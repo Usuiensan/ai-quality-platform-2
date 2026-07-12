@@ -8,10 +8,16 @@ version = "0.1.0"
 description = "Central quality gate platform for GitHub repositories"
 readme = "README.md"
 requires-python = ">=3.12"
+dependencies = [
+    "pyyaml",
+    "tiktoken",
+    "num2words",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
 
