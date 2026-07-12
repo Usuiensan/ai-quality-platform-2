@@ -29,6 +29,7 @@ def run_autofix(
     review_fn: Callable[[Path], list[ReviewResult]] | None = None,
     provider: Provider | None = None,
     fallback_provider: Provider | None = None,
+    interactive_retry: bool = False,
 ) -> tuple[AutofixOutcome, list[ReviewResult]]:
     current_reviews = reviews
     changed_files: list[str] = []
@@ -50,7 +51,7 @@ def run_autofix(
             return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "The same finding reoccurred.", repeated_ids), current_reviews
         seen_fingerprints.add(fingerprint)
 
-        round_changed = _apply_fixes(root, fixable, provider, fallback_provider)
+        round_changed = _apply_fixes(root, fixable, provider, fallback_provider, interactive_retry)
         if round_changed == 0:
             return AutofixOutcome("BLOCK", round_no - 1, changed_files, total_changed_lines, "Failed to apply fixes.", repeated_ids), current_reviews
 
@@ -72,6 +73,11 @@ def run_autofix(
                 return AutofixOutcome("BLOCK", round_no, changed_files, total_changed_lines, "The same finding reoccurred.", repeated_ids), current_reviews
             if not next_fixable:
                 return AutofixOutcome("PASS", round_no, changed_files, total_changed_lines, "Issues resolved in post-fix review.", repeated_ids), current_reviews
+            
+            if next_fixable and interactive_retry and round_no < max_rounds:
+                ans = input(f"Autofix round {round_no} did not resolve all issues. Start round {round_no + 1}? [y/N]: ")
+                if ans.lower() not in ['y', 'yes']:
+                    return AutofixOutcome("HUMAN_REVIEW_REQUIRED", round_no, changed_files, total_changed_lines, "User aborted further iterations.", repeated_ids), current_reviews
 
     return AutofixOutcome("HUMAN_REVIEW_REQUIRED", max_rounds, changed_files, total_changed_lines, "Maximum fix iterations reached.", repeated_ids), current_reviews
 
@@ -95,14 +101,14 @@ def _fingerprint(findings) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
 
 
-def _apply_fixes(root: Path, findings, provider: Provider | None = None, fallback_provider: Provider | None = None) -> int:
+def _apply_fixes(root: Path, findings, provider: Provider | None = None, fallback_provider: Provider | None = None, interactive_retry: bool = False) -> int:
     changed_lines = 0
     for finding in findings:
-        changed_lines += _apply_single_fix(root, finding, provider, fallback_provider)
+        changed_lines += _apply_single_fix(root, finding, provider, fallback_provider, interactive_retry)
     return changed_lines
 
 
-def _apply_single_fix(root: Path, finding, provider: Provider | None = None, fallback_provider: Provider | None = None) -> int:
+def _apply_single_fix(root: Path, finding, provider: Provider | None = None, fallback_provider: Provider | None = None, interactive_retry: bool = False) -> int:
     if provider is None or not finding.file:
         return 0
 
@@ -146,6 +152,10 @@ def _apply_single_fix(root: Path, finding, provider: Provider | None = None, fal
         
     # Try with fallback provider if available
     if fallback_provider is not None:
+        if interactive_retry:
+            ans = input(f"Autofix failed. Fallback to stronger model ({fallback_provider.model})? [y/N]: ")
+            if ans.lower() not in ['y', 'yes']:
+                return 0
         print(f"Falling back to stronger model ({fallback_provider.model})...")
         result = try_generate(fallback_provider)
         if result is not None:
